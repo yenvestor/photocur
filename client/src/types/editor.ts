@@ -1,16 +1,41 @@
 export type ToolId = 
-  | 'rectangle-select' | 'ellipse-select' | 'lasso-select' | 'magic-wand'
-  | 'brush' | 'pencil' | 'eraser' | 'paint-bucket' | 'clone' 
-  | 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
-  | 'gradient' | 'type' | 'move' | 'hand' | 'zoom' | 'eyedropper'
-  | 'pen' | 'rectangle' | 'ellipse';
+  | 'move'
+  | 'rectangle-select' | 'ellipse-select' | 'lasso-select'
+  | 'magic-wand' | 'quick-selection' | 'quick-select' | 'object-selection'
+  | 'crop'
+  | 'eyedropper' | 'color-sampler' | 'ruler'
+  | 'spot-healing' | 'healing-brush' | 'healing' | 'patch' | 'red-eye'
+  | 'brush' | 'pencil' | 'color-replacement'
+  | 'clone'
+  | 'eraser'
+  | 'paint-bucket' | 'gradient'
+  | 'blur' | 'sharpen' | 'smudge'
+  | 'dodge' | 'burn' | 'sponge'
+  | 'type' | 'text' | 'vertical-type'
+  | 'pen' | 'free-pen' | 'add-anchor' | 'delete-anchor' | 'convert-anchor'
+  | 'path-select' | 'direct-select'
+  | 'rectangle' | 'ellipse' | 'line' | 'parametric-shape' | 'custom-shape' | 'shape'
+  | 'hand' | 'rotate-view'
+  | 'zoom';
 
 export interface Tool {
   id: ToolId;
   name: string;
   icon: string;
   shortcut?: string;
-  category: 'selection' | 'painting' | 'retouching' | 'vector' | 'text' | 'navigation' | 'shape';
+  category: 'selection' | 'painting' | 'retouching' | 'drawing' | 'navigation' | 'transformation';
+}
+
+export interface MenuItem {
+  label: string;
+  action: () => void;
+  shortcut?: string;
+  submenu?: MenuItem[];
+  checked?: boolean;
+}
+
+export interface MenuSeparator {
+  type: 'separator';
 }
 
 export interface Document {
@@ -20,25 +45,36 @@ export interface Document {
   height: number;
   layers: Layer[];
   activeLayerId: string;
-  createdAt: Date;
-  modifiedAt: Date;
+  zoom: number;
+  pan: { x: number; y: number };
+  saved: boolean;
 }
 
 export interface Layer {
   id: string;
   name: string;
+  type: 'raster' | 'vector' | 'text' | 'adjustment';
   visible: boolean;
   locked: boolean;
   opacity: number;
   blendMode: BlendMode;
-  type: 'raster' | 'vector' | 'text' | 'adjustment';
-  data?: any;
+  data: any;
+  thumbnail?: string;
 }
 
 export type BlendMode = 
-  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'soft-light' 
-  | 'hard-light' | 'color-dodge' | 'color-burn' | 'darken' 
-  | 'lighten' | 'difference' | 'exclusion';
+  | 'normal' 
+  | 'multiply' 
+  | 'screen' 
+  | 'overlay' 
+  | 'soft-light' 
+  | 'hard-light' 
+  | 'color-dodge' 
+  | 'color-burn' 
+  | 'darken' 
+  | 'lighten' 
+  | 'difference' 
+  | 'exclusion';
 
 export interface ToolOptions {
   brushSize: number;
@@ -46,27 +82,28 @@ export interface ToolOptions {
   flow: number;
   hardness: number;
   blendMode: BlendMode;
-  color: string;
-  backgroundColor: string;
+}
+
+export interface Selection {
+  active: boolean;
+  bounds: { x: number; y: number; width: number; height: number };
+  marching: boolean;
 }
 
 export interface HistoryStep {
-  id: string;
   action: string;
-  before: string;
-  after: string;
   timestamp: number;
+  data: any;
 }
 
 export interface EditorState {
   documents: Document[];
   activeDocumentId: string | null;
-  activeTool: ToolId;
+  activeTool: string;
   toolOptions: ToolOptions;
+  selection: Selection;
   history: HistoryStep[];
   historyIndex: number;
-  canvasRef: HTMLCanvasElement | null;
-  zoom: number;
-  pan: { x: number; y: number };
   isDrawing: boolean;
+  canvasRef: HTMLCanvasElement | null;
 }
