@@ -82,8 +82,6 @@ export const useEditorStore = create<EditorStore>()(
     historyIndex: -1,
     isDrawing: false,
     canvasRef: null,
-    zoom: 1,
-    pan: { x: 0, y: 0 },
 
     // Document actions
     createDocument: (name, width, height) => {
@@ -299,11 +297,11 @@ export const useEditorStore = create<EditorStore>()(
 
     // View actions
     setZoom: (zoom) => {
-      set({ zoom });
+      set(state => ({ ...state, zoom }));
     },
 
     setPan: (pan) => {
-      set({ pan });
+      set(state => ({ ...state, pan }));
     },
   }))
 );

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useEditorStore } from '@/store/editorStore';
+import LayersPanel from './LayersPanel';
 
 export default function RightSidebar() {
   const [activeTab, setActiveTab] = useState('layers');
@@ -19,27 +20,29 @@ export default function RightSidebar() {
   const activeLayer = activeDocument?.layers.find(layer => layer.id === activeDocument.activeLayerId);
 
   const handleAddLayer = () => {
-    addLayer({
-      name: `Layer ${(activeDocument?.layers.length || 0) + 1}`,
-      type: 'raster',
-      visible: true,
-      locked: false,
-      opacity: 100,
-      blendMode: 'normal',
-      data: null,
-    });
+    if (activeDocumentId) {
+      addLayer(activeDocumentId, {
+        name: `Layer ${(activeDocument?.layers.length || 0) + 1}`,
+        type: 'raster',
+        visible: true,
+        locked: false,
+        opacity: 100,
+        blendMode: 'normal',
+        data: null,
+      });
+    }
   };
 
   const handleDeleteLayer = () => {
-    if (activeLayer && activeDocument && activeDocument.layers.length > 1) {
-      removeLayer(activeLayer.id);
+    if (activeLayer && activeDocument && activeDocumentId && activeDocument.layers.length > 1) {
+      removeLayer(activeDocumentId, activeLayer.id);
     }
   };
 
   const toggleLayerVisibility = (layerId: string) => {
     const layer = activeDocument?.layers.find(l => l.id === layerId);
-    if (layer) {
-      updateLayer(layerId, { visible: !layer.visible });
+    if (layer && activeDocumentId) {
+      updateLayer(activeDocumentId, layerId, { visible: !layer.visible });
     }
   };
 
@@ -79,7 +82,7 @@ export default function RightSidebar() {
           <select 
             className="w-full bg-tertiary-dark border border-quaternary-dark rounded px-2 py-1 text-sm"
             value={activeLayer.blendMode}
-            onChange={(e) => updateLayer(activeLayer.id, { blendMode: e.target.value as any })}
+            onChange={(e) => activeDocumentId && updateLayer(activeDocumentId, activeLayer.id, { blendMode: e.target.value as any })}
           >
             <option value="normal">Normal</option>
             <option value="multiply">Multiply</option>
@@ -103,7 +106,7 @@ export default function RightSidebar() {
             max="100" 
             value={activeLayer.opacity}
             className="flex-1 h-2 bg-tertiary-dark rounded-lg"
-            onChange={(e) => updateLayer(activeLayer.id, { opacity: parseInt(e.target.value) })}
+            onChange={(e) => activeDocumentId && updateLayer(activeDocumentId, activeLayer.id, { opacity: parseInt(e.target.value) })}
           />
           <span className="text-xs w-8">{activeLayer.opacity}%</span>
         </div>
@@ -117,7 +120,7 @@ export default function RightSidebar() {
             className={`p-2 flex items-center cursor-pointer border-b border-tertiary-dark hover:bg-tertiary-dark ${
               layer.id === activeDocument.activeLayerId ? 'bg-accent-blue' : ''
             }`}
-            onClick={() => setActiveLayer(layer.id)}
+            onClick={() => activeDocumentId && setActiveLayer(activeDocumentId, layer.id)}
           >
             <div className="w-4 h-4 mr-2 flex items-center justify-center">
               <button onClick={(e) => {
@@ -199,7 +202,7 @@ export default function RightSidebar() {
       <div className="flex-1 overflow-y-auto">
         {history.slice(-10).map((step, index) => (
           <div 
-            key={step.id}
+            key={index}
             className="flex items-center p-1 hover:bg-tertiary-dark rounded cursor-pointer text-sm"
             onClick={() => {
               // Implement step navigation
@@ -308,97 +311,13 @@ export default function RightSidebar() {
 
         {/* Bottom panel content */}
         <div className="flex-1 flex flex-col">
-          {activeTab === 'layers' && (
-            <>
-              {/* Layer controls */}
-              <div className="p-2 space-y-2">
-                <div className="flex items-center space-x-2">
-                  <select className="flex-1 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-xs text-white">
-                    <option value="normal">Normal</option>
-                    <option value="multiply">Multiply</option>
-                    <option value="screen">Screen</option>
-                  </select>
-                  <span className="text-gray-400 text-xs">Opacity:</span>
-                  <select className="bg-gray-600 border border-gray-500 rounded px-2 py-1 text-xs text-white">
-                    <option value="100">100%</option>
-                    <option value="75">75%</option>
-                    <option value="50">50%</option>
-                  </select>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-chevron-down text-xs"></i>
-                  </button>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <span className="text-gray-400 text-xs">Lock:</span>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-lock text-xs"></i>
-                  </button>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-plus text-xs"></i>
-                  </button>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-link text-xs"></i>
-                  </button>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-shield-alt text-xs"></i>
-                  </button>
-                  <span className="text-gray-400 text-xs ml-4">Fill:</span>
-                  <select className="bg-gray-600 border border-gray-500 rounded px-2 py-1 text-xs text-white">
-                    <option value="100">100%</option>
-                  </select>
-                  <button className="text-gray-400 hover:text-white">
-                    <i className="fas fa-chevron-down text-xs"></i>
-                  </button>
-                </div>
-              </div>
-              
-              {/* Layer list */}
-              <div className="flex-1 overflow-y-auto">
-                <div className="flex items-center p-2 bg-gray-600 border-b border-gray-500">
-                  <button className="text-white mr-2">
-                    <i className="fas fa-eye text-xs"></i>
-                  </button>
-                  <div className="w-8 h-6 bg-white mr-2 border border-gray-500"></div>
-                  <span className="text-white text-xs">Background</span>
-                  <button className="ml-auto text-gray-400 hover:text-white">
-                    <i className="fas fa-lock text-xs"></i>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {activeTab === 'layers' && <LayersPanel />}
           
           {activeTab === 'channels' && renderChannelsPanel()}
           {activeTab === 'paths' && renderPathsPanel()}
         </div>
 
-        {/* Bottom toolbar with icons */}
-        <div className="border-t border-gray-600 p-2 bg-gray-800">
-          <div className="flex justify-center space-x-2">
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-link text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-adjust text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-square text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-circle text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-font text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-folder text-xs"></i>
-            </button>
-            <button className="text-gray-400 hover:text-white">
-              <i className="fas fa-trash text-xs"></i>
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
   );

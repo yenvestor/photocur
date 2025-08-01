@@ -1,58 +1,88 @@
-export class FileOperations {
-  static async openFile(): Promise<File | null> {
-    return new Promise((resolve) => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*,.psd,.xcf';
-      
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        resolve(file || null);
-      };
-      
-      input.click();
-    });
-  }
+/**
+ * File operations for image import/export and project management
+ */
 
-  static async loadImageFromFile(file: File): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(img);
-      };
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image'));
-      };
-      
-      img.src = url;
-    });
-  }
-
-  static downloadCanvas(canvas: HTMLCanvasElement, filename: string, format: string = 'png') {
-    const link = document.createElement('a');
-    link.download = filename;
-    
-    if (format === 'jpg' || format === 'jpeg') {
-      link.href = canvas.toDataURL('image/jpeg', 0.9);
-    } else {
-      link.href = canvas.toDataURL('image/png');
+export function openImageFilePicker(callback: (file: File) => void): void {
+  const input = window.document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (file) {
+      callback(file);
     }
-    
-    link.click();
-  }
+  };
+  input.click();
+}
 
-  static async exportProject(project: any): Promise<Blob> {
-    const projectData = JSON.stringify(project);
-    return new Blob([projectData], { type: 'application/json' });
-  }
+export function importImageFile(file: File, canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
-  static async importProject(file: File): Promise<any> {
-    const text = await file.text();
-    return JSON.parse(text);
+  const img = new Image();
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+export function exportCanvasAsImage(canvas: HTMLCanvasElement, format: 'png' | 'jpeg' | 'webp' = 'png'): void {
+  const link = window.document.createElement('a');
+  link.download = `image.${format}`;
+  link.href = canvas.toDataURL(`image/${format}`);
+  link.click();
+}
+
+export function saveDocumentAsProject(document: any): void {
+  const projectData = {
+    name: document.name,
+    width: document.width,
+    height: document.height,
+    layers: document.layers,
+    version: '1.0'
+  };
+
+  const jsonString = JSON.stringify(projectData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = window.document.createElement('a');
+  a.href = url;
+  a.download = `${document.name}.json`;
+  window.document.body.appendChild(a);
+  a.click();
+  window.document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function loadProjectFile(callback: (project: any) => void): void {
+  const input = window.document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const project = JSON.parse(e.target?.result as string);
+          callback(project);
+        } catch (error) {
+          console.error('Error loading project:', error);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+  input.click();
+}
+
+export function quickExport(canvas: HTMLCanvasElement, format: 'web' | 'print' = 'web'): void {
+  if (format === 'web') {
+    exportCanvasAsImage(canvas, 'png');
+  } else {
+    exportCanvasAsImage(canvas, 'jpeg');
   }
 }

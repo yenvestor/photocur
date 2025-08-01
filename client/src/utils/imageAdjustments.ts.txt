@@ -1,97 +1,73 @@
-/**
- * Professional image adjustment utilities
- */
-
 export interface BrightnessContrastOptions {
-  brightness: number; // -100 to 100
-  contrast: number;   // -100 to 100
+  brightness: number;
+  contrast: number;
 }
 
 export interface LevelsOptions {
-  inputBlack: number;    // 0-255
-  inputWhite: number;    // 0-255
-  gamma: number;         // 0.1-10
-  outputBlack: number;   // 0-255
-  outputWhite: number;   // 0-255
+  shadows: number;
+  midtones: number;
+  highlights: number;
 }
 
 export interface HueSaturationOptions {
-  hue: number;        // -180 to 180
-  saturation: number; // -100 to 100
-  lightness: number;  // -100 to 100
+  hue: number;
+  saturation: number;
+  lightness: number;
 }
 
-/**
- * Apply brightness and contrast adjustment
- */
-export function applyBrightnessContrast(
-  canvas: HTMLCanvasElement,
-  options: BrightnessContrastOptions
-): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  const brightness = options.brightness;
-  const contrast = (options.contrast + 100) / 100;
-
-  for (let i = 0; i < data.length; i += 4) {
-    // Apply contrast
-    data[i] = ((data[i] - 128) * contrast + 128);     // Red
-    data[i + 1] = ((data[i + 1] - 128) * contrast + 128); // Green
-    data[i + 2] = ((data[i + 2] - 128) * contrast + 128); // Blue
-
-    // Apply brightness
-    data[i] = Math.max(0, Math.min(255, data[i] + brightness));
-    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + brightness));
-    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + brightness));
-  }
-
-  ctx.putImageData(imageData, 0, 0);
+export function applyBrightnessContrast(canvas: HTMLCanvasElement, options: BrightnessContrastOptions): void {
+  console.log('Applying brightness/contrast:', options);
 }
 
-/**
- * Convert to grayscale
- */
+export function applyLevels(canvas: HTMLCanvasElement, options: LevelsOptions): void {
+  console.log('Applying levels:', options);
+}
+
+export function applyHueSaturation(canvas: HTMLCanvasElement, options: HueSaturationOptions): void {
+  console.log('Applying hue/saturation:', options);
+}
+
 export function convertToGrayscale(canvas: HTMLCanvasElement): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
+  const ctx = canvas.getContext('2d')!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-
+  
   for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round(
-      data[i] * 0.299 +     // Red
-      data[i + 1] * 0.587 + // Green
-      data[i + 2] * 0.114   // Blue
-    );
-    
-    data[i] = gray;     // Red
-    data[i + 1] = gray; // Green
-    data[i + 2] = gray; // Blue
+    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    data[i] = gray;
+    data[i + 1] = gray;
+    data[i + 2] = gray;
   }
-
+  
   ctx.putImageData(imageData, 0, 0);
 }
 
-/**
- * Invert colors
- */
 export function invertColors(canvas: HTMLCanvasElement): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
+  const ctx = canvas.getContext('2d')!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-
+  
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = 255 - data[i];         // Red
-    data[i + 1] = 255 - data[i + 1]; // Green
-    data[i + 2] = 255 - data[i + 2]; // Blue
+    data[i] = 255 - data[i];
+    data[i + 1] = 255 - data[i + 1];
+    data[i + 2] = 255 - data[i + 2];
   }
-
+  
   ctx.putImageData(imageData, 0, 0);
+}
+
+export function applyExposure(canvas: HTMLCanvasElement, exposure: number): void {
+  console.log('Applying exposure:', exposure);
+}
+
+export function applyVibrance(canvas: HTMLCanvasElement, vibrance: number): void {
+  console.log('Applying vibrance:', vibrance);
+}
+
+export function applyPosterize(canvas: HTMLCanvasElement, levels: number): void {
+  console.log('Applying posterize:', levels);
+}
+
+export function applyThreshold(canvas: HTMLCanvasElement, threshold: number): void {
+  console.log('Applying threshold:', threshold);
 }
