@@ -1,27 +1,20 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { Route, Router } from 'wouter';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import EditorPage from './pages/editor';
+import NotFoundPage from './pages/not-found';
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Editor from "@/pages/editor";
-import NotFound from "@/pages/not-found";
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Editor} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
+const queryClient = new QueryClient();
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <Router>
+        <Route path="/" component={EditorPage} />
+        <Route path="/editor" component={EditorPage} />
+        <Route component={NotFoundPage} />
+      </Router>
+      <Toaster />
     </QueryClientProvider>
   );
 }

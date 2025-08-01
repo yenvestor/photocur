@@ -1,0 +1,142 @@
+/**
+ * Transform tools for image manipulation
+ */
+
+/**
+ * Rotate canvas by degrees
+ */
+export function rotateCanvas(
+  canvas: HTMLCanvasElement,
+  degrees: number,
+  centerX?: number,
+  centerY?: number
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Store original image data
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Set rotation center (default to canvas center)
+  const cX = centerX ?? canvas.width / 2;
+  const cY = centerY ?? canvas.height / 2;
+  
+  // Apply rotation
+  ctx.save();
+  ctx.translate(cX, cY);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.translate(-cX, -cY);
+  
+  // Draw the image
+  ctx.putImageData(imageData, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Scale canvas
+ */
+export function scaleCanvas(
+  canvas: HTMLCanvasElement,
+  scaleX: number,
+  scaleY: number,
+  centerX?: number,
+  centerY?: number
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Store original image data
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Set scale center (default to canvas center)
+  const cX = centerX ?? canvas.width / 2;
+  const cY = centerY ?? canvas.height / 2;
+  
+  // Apply scaling
+  ctx.save();
+  ctx.translate(cX, cY);
+  ctx.scale(scaleX, scaleY);
+  ctx.translate(-cX, -cY);
+  
+  // Draw the image
+  ctx.putImageData(imageData, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Flip canvas horizontally
+ */
+export function flipHorizontal(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Store original image data
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Apply horizontal flip
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.translate(-canvas.width, 0);
+  
+  // Draw the image
+  ctx.putImageData(imageData, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Flip canvas vertically
+ */
+export function flipVertical(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Store original image data
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Apply vertical flip
+  ctx.save();
+  ctx.scale(1, -1);
+  ctx.translate(0, -canvas.height);
+  
+  // Draw the image
+  ctx.putImageData(imageData, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Skew canvas
+ */
+export function skewCanvas(
+  canvas: HTMLCanvasElement,
+  skewX: number,
+  skewY: number
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Store original image data
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Apply skew transformation
+  ctx.save();
+  ctx.transform(1, Math.tan(skewY * Math.PI / 180), Math.tan(skewX * Math.PI / 180), 1, 0, 0);
+  
+  // Draw the image
+  ctx.putImageData(imageData, 0, 0);
+  ctx.restore();
+}

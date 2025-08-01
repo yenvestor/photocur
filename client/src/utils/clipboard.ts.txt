@@ -1,0 +1,204 @@
+/**
+ * Clipboard utilities for copy, cut, paste operations
+ */
+
+export interface ClipboardData {
+  imageData: ImageData;
+  width: number;
+  height: number;
+  timestamp: number;
+}
+
+export class CanvasClipboard {
+  private static clipboardData: ClipboardData | null = null;
+
+  /**
+   * Copy selection or entire canvas to clipboard
+   */
+  static copy(
+    canvas: HTMLCanvasElement,
+    selectionBounds?: { x: number; y: number; width: number; height: number }
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let imageData: ImageData;
+    let width: number;
+    let height: number;
+
+    if (selectionBounds) {
+      // Copy selection
+      imageData = ctx.getImageData(
+        selectionBounds.x,
+        selectionBounds.y,
+        selectionBounds.width,
+        selectionBounds.height
+      );
+      width = selectionBounds.width;
+      height = selectionBounds.height;
+    } else {
+      // Copy entire canvas
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      width = canvas.width;
+      height = canvas.height;
+    }
+
+    this.clipboardData = {
+      imageData: this.cloneImageData(imageData),
+      width,
+      height,
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Cut selection (copy + clear)
+   */
+  static cut(
+    canvas: HTMLCanvasElement,
+    selectionBounds?: { x: number; y: number; width: number; height: number }
+  ): void {
+    this.copy(canvas, selectionBounds);
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (selectionBounds) {
+      // Clear selection area
+      ctx.clearRect(
+        selectionBounds.x,
+        selectionBounds.y,
+        selectionBounds.width,
+        selectionBounds.height
+      );
+    } else {
+      // Clear entire canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  /**
+   * Paste clipboard data to canvas
+   */
+  static paste(
+    canvas: HTMLCanvasElement,
+    x?: number,
+    y?: number
+  ): boolean {
+    if (!this.clipboardData) return false;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    const pasteX = x ?? 0;
+    const pasteY = y ?? 0;
+
+    // Create temporary canvas for the clipboard data
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.clipboardData.width;
+    tempCanvas.height = this.clipboardData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return false;
+
+    tempCtx.putImageData(this.clipboardData.imageData, 0, 0);
+
+    // Draw to main canvas
+    ctx.drawImage(tempCanvas, pasteX, pasteY);
+
+    return true;
+  }
+
+  /**
+   * Paste and center on canvas
+   */
+  static pasteCenter(canvas: HTMLCanvasElement): boolean {
+    if (!this.clipboardData) return false;
+
+    const centerX = (canvas.width - this.clipboardData.width) / 2;
+    const centerY = (canvas.height - this.clipboardData.height) / 2;
+
+    return this.paste(canvas, centerX, centerY);
+  }
+
+  /**
+   * Fill selection with color
+   */
+  static fill(
+    canvas: HTMLCanvasElement,
+    color: string,
+    selectionBounds?: { x: number; y: number; width: number; height: number }
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = color;
+
+    if (selectionBounds) {
+      ctx.fillRect(
+        selectionBounds.x,
+        selectionBounds.y,
+        selectionBounds.width,
+        selectionBounds.height
+      );
+    } else {
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  /**
+   * Stroke selection outline
+   */
+  static stroke(
+    canvas: HTMLCanvasElement,
+    color: string,
+    width: number = 1,
+    selectionBounds?: { x: number; y: number; width: number; height: number }
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+
+    if (selectionBounds) {
+      ctx.strokeRect(
+        selectionBounds.x,
+        selectionBounds.y,
+        selectionBounds.width,
+        selectionBounds.height
+      );
+    } else {
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  /**
+   * Clear selection or entire canvas
+   */
+  static clear(
+    canvas: HTMLCanvasElement,
+    selectionBounds?: { x: number; y: number; width: number; height: number }
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (selectionBounds) {
+      ctx.clearRect(
+        selectionBounds.x,
+        selectionBounds.y,
+        selectionBounds.width,
+        selectionBounds.height
+      );
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  /**
+   * Clone ImageData object
+   */
+  private static cloneImageData(imageData: ImageData): ImageData {
+    const clonedData = new Uint8ClampedArray(imageData.data);
+    return new ImageData(clonedData, imageData.width, imageData.height);
+  }
+}
