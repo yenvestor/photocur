@@ -1,295 +1,309 @@
 import { create } from 'zustand';
-import { EditorState, Document, Layer, Tool, HistoryStep, ToolId } from '@/types/editor';
-import { TOOL_NAMES, toolHandlers } from '@/utils/toolHandlers';
+import { subscribeWithSelector } from 'zustand/middleware';
+import { toolHandlers } from '@/utils/toolHandlers';
+import type { Document, Layer, ToolOptions, HistoryStep, EditorState, ToolId } from '@/types/editor';
 
 interface EditorStore extends EditorState {
   // Document actions
   createDocument: (name: string, width: number, height: number) => void;
   closeDocument: (id: string) => void;
   setActiveDocument: (id: string) => void;
-  updateDocument: (id: string, updates: Partial<Document>) => void;
   
   // Layer actions
-  addLayer: (layer: Omit<Layer, 'id'>) => void;
-  removeLayer: (layerId: string) => void;
-  updateLayer: (layerId: string, updates: Partial<Layer>) => void;
-  setActiveLayer: (layerId: string) => void;
-  reorderLayers: (fromIndex: number, toIndex: number) => void;
+  addLayer: (documentId: string, layer: Partial<Layer>) => void;
+  removeLayer: (documentId: string, layerId: string) => void;
+  setActiveLayer: (documentId: string, layerId: string) => void;
+  updateLayer: (documentId: string, layerId: string, updates: Partial<Layer>) => void;
+  duplicateLayer: (documentId: string, layerId: string) => void;
   
   // Tool actions
   setActiveTool: (toolId: ToolId) => void;
-  updateToolOptions: (options: Partial<EditorState['toolOptions']>) => void;
+  updateToolOptions: (options: Partial<ToolOptions>) => void;
+  
+  // Canvas actions
+  setCanvasRef: (canvas: HTMLCanvasElement | null) => void;
+  setIsDrawing: (drawing: boolean) => void;
   
   // History actions
-  addHistoryStep: (step: Omit<HistoryStep, 'id' | 'timestamp'>) => void;
+  addHistoryStep: (step: Omit<HistoryStep, 'timestamp'>) => void;
   undo: () => void;
   redo: () => void;
   
-  // Canvas actions
-  setCanvasRef: (ref: HTMLCanvasElement) => void;
+  // View actions
   setZoom: (zoom: number) => void;
   setPan: (pan: { x: number; y: number }) => void;
-  
-  // Drawing state
-  setIsDrawing: (drawing: boolean) => void;
 }
 
-export const useEditorStore = create<EditorStore>((set, get) => ({
-  // Initial state
-  documents: [],
-  activeDocumentId: null,
-  activeTool: 'move',
-  toolOptions: {
-    brushSize: 20,
-    opacity: 100,
-    flow: 100,
-    hardness: 100,
-    blendMode: 'normal',
-  },
-  selection: {
-    active: false,
-    bounds: { x: 0, y: 0, width: 0, height: 0 },
-    marching: false,
-  },
-  history: [],
-  historyIndex: -1,
-  isDrawing: false,
-  canvasRef: null,
-
-  // Document actions
-  createDocument: (name, width, height) => {
-    const id = crypto.randomUUID();
-    const backgroundLayer: Layer = {
+const createDefaultDocument = (name: string, width: number, height: number): Document => ({
+  id: crypto.randomUUID(),
+  name,
+  width,
+  height,
+  zoom: 1,
+  pan: { x: 0, y: 0 },
+  saved: false,
+  layers: [
+    {
       id: crypto.randomUUID(),
       name: 'Background',
       type: 'raster',
       visible: true,
-      locked: true,
+      locked: false,
       opacity: 100,
       blendMode: 'normal',
       data: null,
-    };
-    
-    const document: Document = {
-      id,
-      name,
-      width,
-      height,
-      layers: [backgroundLayer],
-      activeLayerId: backgroundLayer.id,
-      zoom: 100,
-      pan: { x: 0, y: 0 },
-      saved: false,
-    };
-    
-    set(state => ({
-      documents: [...state.documents, document],
-      activeDocumentId: id,
-    }));
-  },
+    }
+  ],
+  activeLayerId: '',
+});
 
-  closeDocument: (id) => {
-    set(state => {
-      const documents = state.documents.filter(doc => doc.id !== id);
-      const activeDocumentId = state.activeDocumentId === id 
-        ? (documents.length > 0 ? documents[0].id : null)
-        : state.activeDocumentId;
+const initialDocument = createDefaultDocument('Untitled-1', 800, 600);
+initialDocument.activeLayerId = initialDocument.layers[0].id;
+
+export const useEditorStore = create<EditorStore>()(
+  subscribeWithSelector((set, get) => ({
+    // Initial state
+    documents: [initialDocument],
+    activeDocumentId: initialDocument.id,
+    activeTool: 'brush',
+    toolOptions: {
+      brushSize: 10,
+      opacity: 100,
+      flow: 100,
+      hardness: 100,
+      blendMode: 'normal',
+    },
+    selection: {
+      active: false,
+      bounds: { x: 0, y: 0, width: 0, height: 0 },
+      marching: false,
+    },
+    history: [],
+    historyIndex: -1,
+    isDrawing: false,
+    canvasRef: null,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+
+    // Document actions
+    createDocument: (name, width, height) => {
+      const newDoc = createDefaultDocument(name, width, height);
+      newDoc.activeLayerId = newDoc.layers[0].id;
       
-      return { documents, activeDocumentId };
-    });
-  },
+      set(state => ({
+        documents: [...state.documents, newDoc],
+        activeDocumentId: newDoc.id,
+      }));
+    },
 
-  setActiveDocument: (id) => {
-    set({ activeDocumentId: id });
-  },
+    closeDocument: (id) => {
+      set(state => {
+        const newDocuments = state.documents.filter(doc => doc.id !== id);
+        const newActiveId = newDocuments.length > 0 
+          ? (state.activeDocumentId === id ? newDocuments[0].id : state.activeDocumentId)
+          : null;
 
-  updateDocument: (id, updates) => {
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === id ? { ...doc, ...updates } : doc
-      ),
-    }));
-  },
+        return {
+          documents: newDocuments,
+          activeDocumentId: newActiveId,
+        };
+      });
+    },
 
-  // Layer actions
-  addLayer: (layer) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    const newLayer: Layer = {
-      ...layer,
-      id: crypto.randomUUID(),
-    };
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId 
-          ? { 
-              ...doc, 
-              layers: [...doc.layers, newLayer],
-              activeLayerId: newLayer.id,
-              saved: false,
-            }
-          : doc
-      ),
-    }));
-  },
+    setActiveDocument: (id) => {
+      set({ activeDocumentId: id });
+    },
 
-  removeLayer: (layerId) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId 
-          ? { 
-              ...doc, 
-              layers: doc.layers.filter(layer => layer.id !== layerId),
-              saved: false,
-            }
-          : doc
-      ),
-    }));
-  },
-
-  updateLayer: (layerId, updates) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId 
-          ? { 
-              ...doc, 
-              layers: doc.layers.map(layer => 
-                layer.id === layerId ? { ...layer, ...updates } : layer
-              ),
-              saved: false,
-            }
-          : doc
-      ),
-    }));
-  },
-
-  setActiveLayer: (layerId) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId 
-          ? { ...doc, activeLayerId: layerId }
-          : doc
-      ),
-    }));
-  },
-
-  reorderLayers: (fromIndex, toIndex) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => {
-        if (doc.id === activeDocumentId) {
-          const layers = [...doc.layers];
-          const [removed] = layers.splice(fromIndex, 1);
-          layers.splice(toIndex, 0, removed);
-          return { ...doc, layers, saved: false };
-        }
-        return doc;
-      }),
-    }));
-  },
-
-  // Tool actions
-  setActiveTool: (toolId) => {
-    const state = get();
-    const previousTool = state.activeTool as ToolId;
-    
-    // Deactivate previous tool
-    if (state.canvasRef && previousTool && toolHandlers[previousTool]) {
-      toolHandlers[previousTool].onDeactivate(state.canvasRef);
-    }
-    
-    // Set new tool
-    set({ activeTool: toolId });
-    
-    // Activate new tool
-    if (state.canvasRef && toolHandlers[toolId]) {
-      toolHandlers[toolId].onActivate(state.canvasRef);
-    }
-    
-    // Add to history
-    const toolName = TOOL_NAMES[toolId];
-    state.addHistoryStep({
-      action: `Selected ${toolName}`,
-      data: { tool: toolId, previousTool },
-    });
-  },
-
-  updateToolOptions: (options) => {
-    set(state => ({
-      toolOptions: { ...state.toolOptions, ...options },
-    }));
-  },
-
-  // History actions
-  addHistoryStep: (step) => {
-    const historyStep: HistoryStep = {
-      ...step,
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-    };
-    
-    set(state => {
-      const history = state.history.slice(0, state.historyIndex + 1);
-      return {
-        history: [...history, historyStep],
-        historyIndex: history.length,
+    // Layer actions
+    addLayer: (documentId, layerData) => {
+      const newLayer: Layer = {
+        id: crypto.randomUUID(),
+        name: layerData.name || 'New Layer',
+        type: layerData.type || 'raster',
+        visible: layerData.visible ?? true,
+        locked: layerData.locked ?? false,
+        opacity: layerData.opacity ?? 100,
+        blendMode: layerData.blendMode || 'normal',
+        data: layerData.data || null,
       };
-    });
-  },
 
-  undo: () => {
-    set(state => ({
-      historyIndex: Math.max(-1, state.historyIndex - 1),
-    }));
-  },
+      set(state => ({
+        documents: state.documents.map(doc =>
+          doc.id === documentId
+            ? { ...doc, layers: [...doc.layers, newLayer] }
+            : doc
+        ),
+      }));
+    },
 
-  redo: () => {
-    set(state => ({
-      historyIndex: Math.min(state.history.length - 1, state.historyIndex + 1),
-    }));
-  },
+    removeLayer: (documentId, layerId) => {
+      set(state => ({
+        documents: state.documents.map(doc =>
+          doc.id === documentId
+            ? { 
+                ...doc, 
+                layers: doc.layers.filter(layer => layer.id !== layerId),
+                activeLayerId: doc.activeLayerId === layerId 
+                  ? (doc.layers.find(l => l.id !== layerId)?.id || '')
+                  : doc.activeLayerId
+              }
+            : doc
+        ),
+      }));
+    },
 
-  // Canvas actions
-  setCanvasRef: (ref) => {
-    set({ canvasRef: ref });
-  },
+    setActiveLayer: (documentId, layerId) => {
+      set(state => ({
+        documents: state.documents.map(doc =>
+          doc.id === documentId
+            ? { ...doc, activeLayerId: layerId }
+            : doc
+        ),
+      }));
+    },
 
-  setZoom: (zoom) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId ? { ...doc, zoom } : doc
-      ),
-    }));
-  },
+    updateLayer: (documentId, layerId, updates) => {
+      set(state => ({
+        documents: state.documents.map(doc =>
+          doc.id === documentId
+            ? {
+                ...doc,
+                layers: doc.layers.map(layer =>
+                  layer.id === layerId ? { ...layer, ...updates } : layer
+                ),
+              }
+            : doc
+        ),
+      }));
+    },
 
-  setPan: (pan) => {
-    const { activeDocumentId } = get();
-    if (!activeDocumentId) return;
-    
-    set(state => ({
-      documents: state.documents.map(doc => 
-        doc.id === activeDocumentId ? { ...doc, pan } : doc
-      ),
-    }));
-  },
+    duplicateLayer: (documentId, layerId) => {
+      set(state => {
+        const doc = state.documents.find(d => d.id === documentId);
+        const layer = doc?.layers.find(l => l.id === layerId);
+        
+        if (!layer) return state;
 
-  setIsDrawing: (drawing) => {
-    set({ isDrawing: drawing });
-  },
-}));
+        const duplicatedLayer: Layer = {
+          ...layer,
+          id: crypto.randomUUID(),
+          name: `${layer.name} copy`,
+        };
+
+        return {
+          documents: state.documents.map(doc =>
+            doc.id === documentId
+              ? { ...doc, layers: [...doc.layers, duplicatedLayer] }
+              : doc
+          ),
+        };
+      });
+    },
+
+    // Tool actions
+    setActiveTool: (toolId) => {
+      const { canvasRef } = get();
+      
+      // Deactivate current tool
+      if (canvasRef) {
+        const currentTool = get().activeTool;
+        if (toolHandlers[currentTool as ToolId]?.onDeactivate) {
+          toolHandlers[currentTool as ToolId].onDeactivate!(canvasRef);
+        }
+      }
+
+      set({ activeTool: toolId });
+
+      // Activate new tool
+      if (canvasRef && toolHandlers[toolId]?.onActivate) {
+        toolHandlers[toolId].onActivate(canvasRef);
+      }
+    },
+
+    updateToolOptions: (options) => {
+      set(state => ({
+        toolOptions: { ...state.toolOptions, ...options },
+      }));
+    },
+
+    // Canvas actions
+    setCanvasRef: (canvas) => {
+      set({ canvasRef: canvas });
+    },
+
+    setIsDrawing: (drawing) => {
+      set({ isDrawing: drawing });
+    },
+
+    // History actions
+    addHistoryStep: (step) => {
+      const historyStep: HistoryStep = {
+        ...step,
+        timestamp: Date.now(),
+      };
+      
+      set(state => {
+        const history = state.history.slice(0, state.historyIndex + 1);
+        history.push(historyStep);
+        
+        // Limit history to 50 steps
+        if (history.length > 50) {
+          history.shift();
+        }
+        
+        return {
+          history,
+          historyIndex: history.length - 1,
+        };
+      });
+    },
+
+    undo: () => {
+      set(state => {
+        if (state.historyIndex >= 0) {
+          const step = state.history[state.historyIndex];
+          
+          // Apply the undo operation
+          if (step && state.canvasRef) {
+            // Implementation would depend on step type
+            console.log('Undoing:', step.action);
+          }
+          
+          return {
+            historyIndex: state.historyIndex - 1,
+          };
+        }
+        return state;
+      });
+    },
+
+    redo: () => {
+      set(state => {
+        if (state.historyIndex < state.history.length - 1) {
+          const newIndex = state.historyIndex + 1;
+          const step = state.history[newIndex];
+          
+          // Apply the redo operation
+          if (step && state.canvasRef) {
+            // Implementation would depend on step type
+            console.log('Redoing:', step.action);
+          }
+          
+          return {
+            historyIndex: newIndex,
+          };
+        }
+        return state;
+      });
+    },
+
+    // View actions
+    setZoom: (zoom) => {
+      set({ zoom });
+    },
+
+    setPan: (pan) => {
+      set({ pan });
+    },
+  }))
+);

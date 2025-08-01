@@ -1,0 +1,148 @@
+/**
+ * Basic image processing utilities
+ */
+
+export function floodFill(
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  fillColor: string,
+  width: number,
+  height: number
+): void {
+  // Simple flood fill implementation
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  const targetColor = getPixelColor(data, startX, startY, width);
+  const replacementColor = hexToRgb(fillColor);
+  
+  if (colorsEqual(targetColor, replacementColor)) return;
+  
+  const stack = [[startX, startY]];
+  
+  while (stack.length > 0) {
+    const [x, y] = stack.pop()!;
+    
+    if (x < 0 || x >= width || y < 0 || y >= height) continue;
+    
+    const currentColor = getPixelColor(data, x, y, width);
+    if (!colorsEqual(currentColor, targetColor)) continue;
+    
+    setPixelColor(data, x, y, width, replacementColor);
+    
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+export function hexToRgb(hex: string): [number, number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16),
+    255
+  ] : [0, 0, 0, 255];
+}
+
+export function gaussianBlur(imageData: ImageData, radius: number): ImageData {
+  // Simple blur implementation
+  const data = new Uint8ClampedArray(imageData.data);
+  const width = imageData.width;
+  const height = imageData.height;
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0, a = 0, count = 0;
+      
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const idx = (ny * width + nx) * 4;
+            r += data[idx];
+            g += data[idx + 1];
+            b += data[idx + 2];
+            a += data[idx + 3];
+            count++;
+          }
+        }
+      }
+      
+      const idx = (y * width + x) * 4;
+      imageData.data[idx] = r / count;
+      imageData.data[idx + 1] = g / count;
+      imageData.data[idx + 2] = b / count;
+      imageData.data[idx + 3] = a / count;
+    }
+  }
+  
+  return imageData;
+}
+
+export function sharpen(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d')!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Simple sharpen filter
+  const kernel = [
+    0, -1, 0,
+    -1, 5, -1,
+    0, -1, 0
+  ];
+  
+  applyKernel(imageData, kernel);
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function getPixelColor(data: Uint8ClampedArray, x: number, y: number, width: number): [number, number, number, number] {
+  const idx = (y * width + x) * 4;
+  return [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
+}
+
+function setPixelColor(data: Uint8ClampedArray, x: number, y: number, width: number, color: [number, number, number, number]): void {
+  const idx = (y * width + x) * 4;
+  data[idx] = color[0];
+  data[idx + 1] = color[1];
+  data[idx + 2] = color[2];
+  data[idx + 3] = color[3];
+}
+
+function colorsEqual(c1: [number, number, number, number], c2: [number, number, number, number]): boolean {
+  return c1[0] === c2[0] && c1[1] === c2[1] && c1[2] === c2[2] && c1[3] === c2[3];
+}
+
+function applyKernel(imageData: ImageData, kernel: number[]): void {
+  const data = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  const output = new Uint8ClampedArray(data);
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let r = 0, g = 0, b = 0;
+      
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const idx = ((y + ky) * width + (x + kx)) * 4;
+          const kernelValue = kernel[(ky + 1) * 3 + (kx + 1)];
+          
+          r += data[idx] * kernelValue;
+          g += data[idx + 1] * kernelValue;
+          b += data[idx + 2] * kernelValue;
+        }
+      }
+      
+      const idx = (y * width + x) * 4;
+      output[idx] = Math.max(0, Math.min(255, r));
+      output[idx + 1] = Math.max(0, Math.min(255, g));
+      output[idx + 2] = Math.max(0, Math.min(255, b));
+    }
+  }
+  
+  imageData.data.set(output);
+}

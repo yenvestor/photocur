@@ -1,18 +1,40 @@
 import { useState } from 'react';
-import { FileOperations } from '@/utils/fileOperations';
+import { openImageFilePicker, importImageFile, exportCanvasAsImage, saveDocumentAsProject, loadProjectFile, quickExport } from '@/utils/fileOperations';
 import { useEditorStore } from '@/store/editorStore';
+import {
+  applyBrightnessContrast,
+  applyLevels,
+  applyHueSaturation,
+  convertToGrayscale,
+  invertColors,
+  applyExposure,
+  applyVibrance,
+  applyPosterize,
+  applyThreshold
+} from '@/utils/imageAdjustments';
+import {
+  applyMotionBlur,
+  applyOilPainting,
+  applyWatercolor,
+  applyEmboss,
+  applyEdgeDetection,
+  applyPinch,
+  applySpherize
+} from '@/utils/filterEffects';
+import {
+  rotateCanvas,
+  scaleCanvas,
+  flipHorizontal,
+  flipVertical,
+  skewCanvas,
+  resizeCanvas,
+  cropCanvas
+} from '@/utils/transformTools';
+import { CanvasClipboard } from '@/utils/clipboard';
+import { MenuItem, MenuSeparator } from '@/types/editor';
 
-interface MenuItem {
-  label: string;
-  action: () => void;
-  shortcut?: string;
-  checked?: boolean;
-  submenu?: MenuItem[];
-}
-
-interface MenuSeparator {
-  type: 'separator';
-}
+// Helper function to create a separator
+const separator = (): MenuSeparator => ({ type: 'separator' });
 
 interface MenuGroup {
   id: string;
@@ -22,187 +44,294 @@ interface MenuGroup {
 
 export default function TopMenuBar() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const { createDocument, activeDocumentId, documents, undo, redo } = useEditorStore();
-
+  const { createDocument, activeDocumentId, documents, undo, redo, addHistoryStep, closeDocument } = useEditorStore();
   const activeDocument = documents.find(doc => doc.id === activeDocumentId);
+
+  // Helper function to get the active canvas
+  const getActiveCanvas = (): HTMLCanvasElement | null => {
+    return window.document.querySelector('canvas') as HTMLCanvasElement;
+  };
+
+  // Helper function to add history and get canvas
+  const withHistoryAndCanvas = (operation: (canvas: HTMLCanvasElement) => void) => {
+    const canvas = getActiveCanvas();
+    if (!canvas) {
+      alert('No active canvas found');
+      return;
+    }
+    
+    // Save state before operation
+    const beforeState = canvas.toDataURL();
+    
+    // Perform operation
+    operation(canvas);
+    
+    // Save state after operation
+    const afterState = canvas.toDataURL();
+    
+    // Add to history
+    addHistoryStep({
+      action: 'transform',
+      data: { before: beforeState, after: afterState }
+    });
+  };
 
   const handleNewDocument = () => {
     createDocument('Untitled', 800, 600);
     setOpenDropdown(null);
   };
 
-  const handleOpenDocument = async () => {
-    const file = await FileOperations.openFile();
-    if (file) {
-      try {
-        const img = await FileOperations.loadImageFromFile(file);
-        createDocument(file.name, img.width, img.height);
-      } catch (error) {
-        console.error('Failed to open file:', error);
-      }
+  const handleCloseDocument = () => {
+    if (activeDocumentId) {
+      closeDocument(activeDocumentId);
+      setOpenDropdown(null);
     }
-    setOpenDropdown(null);
   };
 
-  const handleSaveDocument = () => {
-    if (activeDocument) {
-      // Implement save functionality
-      console.log('Saving document:', activeDocument.name);
-    }
-    setOpenDropdown(null);
-  };
-
-  const menuItems: MenuGroup[] = [
+  const menuGroups: MenuGroup[] = [
     {
       id: 'file',
       label: 'File',
       items: [
-        { label: 'New...', shortcut: 'Alt+Ctrl+N', action: handleNewDocument },
-        { label: 'Open...', shortcut: 'Ctrl+O', action: handleOpenDocument },
-        { label: 'Open & Place...', action: () => {} },
         { 
-          label: 'Open More', 
-          action: () => {},
-          submenu: [
-            { label: 'Browse Online...', action: () => {} },
-            { label: 'Open as Smart Object...', action: () => {} },
-            { label: 'Open Recent', action: () => {} }
-          ]
+          label: 'New...', 
+          shortcut: 'Ctrl+N', 
+          action: handleNewDocument 
         },
-        { type: 'separator' },
         { 
-          label: 'Share', 
-          action: () => {},
-          submenu: [
-            { label: 'Quick Share...', action: () => {} },
-            { label: 'Copy Link...', action: () => {} },
-            { label: 'Download Image...', action: () => {} }
-          ]
+          label: 'Open...', 
+          shortcut: 'Ctrl+O', 
+          action: () => {
+            openImageFilePicker((file) => {
+              const canvas = getActiveCanvas();
+              if (canvas) importImageFile(file, canvas);
+            });
+            setOpenDropdown(null);
+          }
         },
-        { type: 'separator' },
-        { label: 'Save', shortcut: 'Ctrl+S', action: handleSaveDocument },
-        { label: 'Save as PSD', action: () => {} },
         { 
-          label: 'Save More', 
-          action: () => {},
+          label: 'Open Recent', 
+          action: () => {}, 
           submenu: [
-            { label: 'Save as Copy...', action: () => {} },
-            { label: 'Save for Web...', shortcut: 'Alt+Shift+Ctrl+S', action: () => {} },
-            { label: 'Save as Template...', action: () => {} }
+            { label: 'image1.jpg', action: () => {} },
+            { label: 'design.psd', action: () => {} },
+            { label: 'Clear Recent', action: () => {} }
           ]
         },
         { 
-          label: 'Export as', 
-          action: () => {},
+          label: 'Close', 
+          shortcut: 'Ctrl+W', 
+          action: handleCloseDocument 
+        },
+        { 
+          label: 'Close All', 
+          shortcut: 'Ctrl+Alt+W', 
+          action: () => {
+            documents.forEach(doc => closeDocument(doc.id));
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
+        { 
+          label: 'Save', 
+          shortcut: 'Ctrl+S', 
+          action: () => {
+            if (activeDocument) {
+              saveDocumentAsProject(activeDocument);
+            }
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Save As...', 
+          shortcut: 'Ctrl+Shift+S', 
+          action: () => {
+            if (activeDocument) {
+              saveDocumentAsProject(activeDocument);
+            }
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Save for Web...', 
+          shortcut: 'Ctrl+Alt+Shift+S', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) quickExport(canvas, 'web');
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
+        { 
+          label: 'Import', 
+          action: () => {}, 
           submenu: [
-            { label: 'PNG...', action: () => {} },
-            { label: 'JPG...', action: () => {} },
-            { label: 'GIF...', action: () => {} },
-            { label: 'WebP...', action: () => {} },
-            { label: 'SVG...', action: () => {} },
+            { 
+              label: 'Image...', 
+              action: () => {
+                openImageFilePicker((file) => {
+                  const canvas = getActiveCanvas();
+                  if (canvas) importImageFile(file, canvas);
+                });
+              }
+            },
+            { label: 'Video Frames...', action: () => {} },
             { label: 'PDF...', action: () => {} }
           ]
         },
-        { label: 'Print...', shortcut: 'Ctrl+P', action: () => {} },
-        { type: 'separator' },
-        { label: 'Export Layers...', action: () => {} },
-        { label: 'Export Color Lookup...', action: () => {} },
-        { type: 'separator' },
-        { label: 'File Info...', action: () => {} },
-        { type: 'separator' },
         { 
-          label: 'Automate', 
-          action: () => {},
+          label: 'Export', 
+          action: () => {}, 
           submenu: [
-            { label: 'Batch...', action: () => {} },
-            { label: 'Create Action...', action: () => {} },
-            { label: 'Fit Image...', action: () => {} },
-            { label: 'Contact Sheet...', action: () => {} }
+            { 
+              label: 'PNG...', 
+              action: () => {
+                const canvas = getActiveCanvas();
+                if (canvas) exportCanvasAsImage(canvas, 'png');
+              }
+            },
+            { 
+              label: 'JPEG...', 
+              action: () => {
+                const canvas = getActiveCanvas();
+                if (canvas) exportCanvasAsImage(canvas, 'jpeg');
+              }
+            },
+            { 
+              label: 'WebP...', 
+              action: () => {
+                const canvas = getActiveCanvas();
+                if (canvas) exportCanvasAsImage(canvas, 'webp');
+              }
+            }
           ]
         },
-        { label: 'Scripts...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Close', shortcut: 'Ctrl+W', action: () => {} },
-        { label: 'Close All', shortcut: 'Alt+Ctrl+W', action: () => {} }
+        separator(),
+        { 
+          label: 'Print...', 
+          shortcut: 'Ctrl+P', 
+          action: () => {
+            window.print();
+            setOpenDropdown(null);
+          }
+        }
       ]
     },
     {
       id: 'edit',
       label: 'Edit',
       items: [
-        { label: 'Undo / Redo', action: () => {} },
-        { type: 'separator' },
-        { label: 'Step Forward', shortcut: 'Shift+Ctrl+Z', action: () => {} },
-        { label: 'Step Backward', shortcut: 'Ctrl+Z', action: () => {} },
-        { type: 'separator' },
-        { label: 'Fade...', shortcut: 'Shift+Ctrl+F', action: () => {} },
-        { type: 'separator' },
-        { label: 'Cut', shortcut: 'Ctrl+X', action: () => {} },
-        { label: 'Copy', shortcut: 'Ctrl+C', action: () => {} },
-        { label: 'Copy Merged', shortcut: 'Shift+Ctrl+C', action: () => {} },
-        { label: 'Paste', shortcut: 'Ctrl+V', action: () => {} },
-        { label: 'Clear', shortcut: 'Delete', action: () => {} },
-        { type: 'separator' },
-        { label: 'Fill...', shortcut: 'Shift+F5', action: () => {} },
-        { label: 'Stroke...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Content-Aware Scale', action: () => {} },
-        { label: 'Puppet Warp', action: () => {} },
-        { label: 'Perspective Warp', action: () => {} },
-        { label: 'Free Transform', shortcut: 'Alt+Ctrl+T', action: () => {} },
+        { 
+          label: 'Undo', 
+          shortcut: 'Ctrl+Z', 
+          action: () => {
+            undo();
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Redo', 
+          shortcut: 'Ctrl+Y', 
+          action: () => {
+            redo();
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
+        { 
+          label: 'Cut', 
+          shortcut: 'Ctrl+X', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) CanvasClipboard.cut(canvas);
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Copy', 
+          shortcut: 'Ctrl+C', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) CanvasClipboard.copy(canvas);
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Paste', 
+          shortcut: 'Ctrl+V', 
+          action: async () => {
+            const canvas = getActiveCanvas();
+            if (canvas) await CanvasClipboard.paste(canvas);
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Clear', 
+          shortcut: 'Delete', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) CanvasClipboard.clearCanvas(canvas);
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
+        { 
+          label: 'Fill...', 
+          shortcut: 'Shift+F5', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+              }
+            }
+            setOpenDropdown(null);
+          }
+        },
+        { 
+          label: 'Stroke...', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+              }
+            }
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
         { 
           label: 'Transform', 
-          action: () => {},
+          action: () => {}, 
           submenu: [
-            { label: 'Scale', action: () => {} },
-            { label: 'Rotate', action: () => {} },
-            { label: 'Skew', action: () => {} },
-            { label: 'Distort', action: () => {} },
-            { label: 'Perspective', action: () => {} },
-            { label: 'Warp', action: () => {} },
-            { type: 'separator' },
-            { label: 'Rotate 180°', action: () => {} },
-            { label: 'Rotate 90° CW', action: () => {} },
-            { label: 'Rotate 90° CCW', action: () => {} },
-            { label: 'Flip Horizontal', action: () => {} },
-            { label: 'Flip Vertical', action: () => {} }
+            { 
+              label: 'Scale...', 
+              action: () => withHistoryAndCanvas((canvas) => scaleCanvas(canvas, 1.2, 1.2))
+            },
+            { 
+              label: 'Rotate...', 
+              action: () => withHistoryAndCanvas((canvas) => rotateCanvas(canvas, 90))
+            },
+            { 
+              label: 'Skew...', 
+              action: () => withHistoryAndCanvas((canvas) => skewCanvas(canvas, 10, 0))
+            },
+            { 
+              label: 'Flip Horizontal', 
+              action: () => withHistoryAndCanvas((canvas) => flipHorizontal(canvas))
+            },
+            { 
+              label: 'Flip Vertical', 
+              action: () => withHistoryAndCanvas((canvas) => flipVertical(canvas))
+            }
           ]
-        },
-        { label: 'Auto-Align', action: () => {} },
-        { label: 'Auto-Blend', action: () => {} },
-        { type: 'separator' },
-        { 
-          label: 'Assign Profile', 
-          action: () => {},
-          submenu: [
-            { label: 'sRGB IEC61966-2.1', action: () => {} },
-            { label: 'Adobe RGB (1998)', action: () => {} },
-            { label: 'ProPhoto RGB', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Convert to Profile', 
-          action: () => {},
-          submenu: [
-            { label: 'sRGB IEC61966-2.1', action: () => {} },
-            { label: 'Adobe RGB (1998)', action: () => {} },
-            { label: 'ProPhoto RGB', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { 
-          label: 'Define New', 
-          action: () => {},
-          submenu: [
-            { label: 'Brush Preset...', action: () => {} },
-            { label: 'Pattern...', action: () => {} },
-            { label: 'Custom Shape...', action: () => {} }
-          ]
-        },
-        { label: 'Preset Manager...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Preferences...', shortcut: 'Ctrl+K', action: () => {} },
-        { label: 'Local Storage...', action: () => {} }
+        }
       ]
     },
     {
@@ -210,443 +339,154 @@ export default function TopMenuBar() {
       label: 'Image',
       items: [
         { 
-          label: 'Mode', 
-          action: () => {},
-          submenu: [
-            { label: 'RGB Color', action: () => {} },
-            { label: 'CMYK Color', action: () => {} },
-            { label: 'Lab Color', action: () => {} },
-            { label: 'Grayscale', action: () => {} },
-            { type: 'separator' },
-            { label: '8 Bits/Channel', action: () => {} },
-            { label: '16 Bits/Channel', action: () => {} },
-            { label: '32 Bits/Channel', action: () => {} }
-          ]
+          label: 'Image Size...', 
+          shortcut: 'Ctrl+Alt+I', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) {
+              const newWidth = prompt('New width:', canvas.width.toString());
+              const newHeight = prompt('New height:', canvas.height.toString());
+              if (newWidth && newHeight) {
+                resizeCanvas(canvas, parseInt(newWidth), parseInt(newHeight));
+              }
+            }
+            setOpenDropdown(null);
+          }
         },
+        { 
+          label: 'Canvas Size...', 
+          shortcut: 'Ctrl+Alt+C', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) {
+              const newWidth = prompt('Canvas width:', canvas.width.toString());
+              const newHeight = prompt('Canvas height:', canvas.height.toString());
+              if (newWidth && newHeight) {
+                resizeCanvas(canvas, parseInt(newWidth), parseInt(newHeight));
+              }
+            }
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
+        { 
+          label: 'Crop', 
+          action: () => {
+            const canvas = getActiveCanvas();
+            if (canvas) {
+              cropCanvas(canvas, { x: 50, y: 50, width: canvas.width - 100, height: canvas.height - 100 });
+            }
+            setOpenDropdown(null);
+          }
+        },
+        separator(),
         { 
           label: 'Adjustments', 
-          action: () => {},
+          action: () => {}, 
           submenu: [
-            { label: 'Brightness/Contrast...', action: () => {} },
-            { label: 'Levels...', shortcut: 'Ctrl+L', action: () => {} },
-            { label: 'Curves...', shortcut: 'Ctrl+M', action: () => {} },
-            { label: 'Exposure...', action: () => {} },
-            { label: 'Vibrance...', action: () => {} },
-            { label: 'Hue/Saturation...', shortcut: 'Ctrl+U', action: () => {} },
-            { label: 'Color Balance...', shortcut: 'Ctrl+B', action: () => {} },
-            { label: 'Black & White...', shortcut: 'Alt+Shift+Ctrl+B', action: () => {} },
-            { label: 'Photo Filter...', action: () => {} },
-            { label: 'Channel Mixer...', action: () => {} },
-            { label: 'Color Lookup...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Invert', shortcut: 'Ctrl+I', action: () => {} },
-            { label: 'Posterize...', action: () => {} },
-            { label: 'Threshold...', action: () => {} },
-            { label: 'Gradient Map...', action: () => {} },
-            { label: 'Selective Color...', action: () => {} }
+            { 
+              label: 'Brightness/Contrast...', 
+              action: () => withHistoryAndCanvas((canvas) => 
+                applyBrightnessContrast(canvas, { brightness: 10, contrast: 10 })
+              )
+            },
+            { 
+              label: 'Levels...', 
+              action: () => withHistoryAndCanvas((canvas) => 
+                applyLevels(canvas, { shadows: 0, midtones: 1, highlights: 255 })
+              )
+            },
+            { 
+              label: 'Hue/Saturation...', 
+              action: () => withHistoryAndCanvas((canvas) => 
+                applyHueSaturation(canvas, { hue: 0, saturation: 10, lightness: 0 })
+              )
+            },
+            { 
+              label: 'Exposure...', 
+              action: () => withHistoryAndCanvas((canvas) => applyExposure(canvas, 0.5))
+            },
+            { 
+              label: 'Vibrance...', 
+              action: () => withHistoryAndCanvas((canvas) => applyVibrance(canvas, 20))
+            },
+            separator(),
+            { 
+              label: 'Desaturate', 
+              action: () => withHistoryAndCanvas((canvas) => convertToGrayscale(canvas))
+            },
+            { 
+              label: 'Invert', 
+              action: () => withHistoryAndCanvas((canvas) => invertColors(canvas))
+            },
+            { 
+              label: 'Posterize...', 
+              action: () => withHistoryAndCanvas((canvas) => applyPosterize(canvas, 4))
+            },
+            { 
+              label: 'Threshold...', 
+              action: () => withHistoryAndCanvas((canvas) => applyThreshold(canvas, 128))
+            }
           ]
-        },
-        { label: 'Auto Tone', shortcut: 'Shift+Ctrl+L', action: () => {} },
-        { label: 'Auto Contrast', shortcut: 'Alt+Shift+Ctrl+L', action: () => {} },
-        { label: 'Auto Color', shortcut: 'Shift+Ctrl+B', action: () => {} },
-        { type: 'separator' },
-        { label: 'Reduce Colors...', action: () => {} },
-        { label: 'Vectorize Bitmap...', action: () => {} },
-        { label: 'Wavelet Decompose', action: () => {} },
-        { type: 'separator' },
-        { label: 'Canvas Size...', shortcut: 'Alt+Ctrl+C', action: () => {} },
-        { label: 'Image Size...', shortcut: 'Alt+Ctrl+I', action: () => {} },
-        { 
-          label: 'Transform', 
-          action: () => {},
-          submenu: [
-            { label: 'Rotate 90° CW', action: () => {} },
-            { label: 'Rotate 90° CCW', action: () => {} },
-            { label: 'Rotate 180°', action: () => {} },
-            { type: 'separator' },
-            { label: 'Flip Canvas Horizontal', action: () => {} },
-            { label: 'Flip Canvas Vertical', action: () => {} },
-            { type: 'separator' },
-            { label: 'Arbitrary Rotation...', action: () => {} }
-          ]
-        },
-        { label: 'Crop', action: () => {} },
-        { label: 'Trim...', shortcut: 'Ctrl+T', action: () => {} },
-        { label: 'Reveal All', action: () => {} },
-        { type: 'separator' },
-        { label: 'Duplicate', action: () => {} },
-        { label: 'Apply Image...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Variables...', action: () => {} }
-      ]
-    },
-    {
-      id: 'layer',
-      label: 'Layer',
-      items: [
-        { 
-          label: 'New', 
-          action: () => {},
-          submenu: [
-            { label: 'Layer...', shortcut: 'Ctrl+Shift+N', action: () => {} },
-            { label: 'Layer from Background', action: () => {} },
-            { label: 'Group...', shortcut: 'Ctrl+G', action: () => {} },
-            { label: 'Group from Layers...', action: () => {} }
-          ]
-        },
-        { label: 'Duplicate Layer', action: () => {} },
-        { label: 'Duplicate Into...', action: () => {} },
-        { label: 'Delete', shortcut: 'Delete', action: () => {} },
-        { type: 'separator' },
-        { 
-          label: 'Text', 
-          action: () => {},
-          submenu: [
-            { label: 'Horizontal Type Tool', shortcut: 'T', action: () => {} },
-            { label: 'Vertical Type Tool', action: () => {} },
-            { label: 'Convert to Point Text', action: () => {} },
-            { label: 'Convert to Paragraph Text', action: () => {} },
-            { label: 'Create Work Path', action: () => {} },
-            { label: 'Convert to Shape', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Layer Style', 
-          action: () => {},
-          submenu: [
-            { label: 'Blending Options...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Drop Shadow...', action: () => {} },
-            { label: 'Inner Shadow...', action: () => {} },
-            { label: 'Outer Glow...', action: () => {} },
-            { label: 'Inner Glow...', action: () => {} },
-            { label: 'Bevel & Emboss...', action: () => {} },
-            { label: 'Satin...', action: () => {} },
-            { label: 'Color Overlay...', action: () => {} },
-            { label: 'Gradient Overlay...', action: () => {} },
-            { label: 'Pattern Overlay...', action: () => {} },
-            { label: 'Stroke...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Copy Layer Style', action: () => {} },
-            { label: 'Paste Layer Style', action: () => {} },
-            { label: 'Clear Layer Style', action: () => {} }
-          ]
-        },
-        { 
-          label: 'New Fill Layer', 
-          action: () => {},
-          submenu: [
-            { label: 'Solid Color...', action: () => {} },
-            { label: 'Gradient...', action: () => {} },
-            { label: 'Pattern...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'New Adjustment Layer', 
-          action: () => {},
-          submenu: [
-            { label: 'Brightness/Contrast...', action: () => {} },
-            { label: 'Levels...', action: () => {} },
-            { label: 'Curves...', action: () => {} },
-            { label: 'Exposure...', action: () => {} },
-            { label: 'Vibrance...', action: () => {} },
-            { label: 'Hue/Saturation...', action: () => {} },
-            { label: 'Color Balance...', action: () => {} },
-            { label: 'Black & White...', action: () => {} },
-            { label: 'Photo Filter...', action: () => {} },
-            { label: 'Channel Mixer...', action: () => {} },
-            { label: 'Color Lookup...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Invert', action: () => {} },
-            { label: 'Posterize...', action: () => {} },
-            { label: 'Threshold...', action: () => {} },
-            { label: 'Gradient Map...', action: () => {} },
-            { label: 'Selective Color...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Raster Mask', 
-          action: () => {},
-          submenu: [
-            { label: 'Reveal All', action: () => {} },
-            { label: 'Hide All', action: () => {} },
-            { label: 'Reveal Selection', action: () => {} },
-            { label: 'Hide Selection', action: () => {} },
-            { label: 'From Transparency', action: () => {} },
-            { type: 'separator' },
-            { label: 'Delete', action: () => {} },
-            { label: 'Apply', action: () => {} },
-            { label: 'Disable', action: () => {} },
-            { label: 'Unlink', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Vector Mask', 
-          action: () => {},
-          submenu: [
-            { label: 'Reveal All', action: () => {} },
-            { label: 'Hide All', action: () => {} },
-            { label: 'Current Path', action: () => {} },
-            { type: 'separator' },
-            { label: 'Delete', action: () => {} },
-            { label: 'Disable', action: () => {} },
-            { label: 'Unlink', action: () => {} }
-          ]
-        },
-        { label: 'Clipping Mask', shortcut: 'Alt+Ctrl+G', action: () => {} },
-        { 
-          label: 'Smart Object', 
-          action: () => {},
-          submenu: [
-            { label: 'Convert to Smart Object', action: () => {} },
-            { label: 'New Smart Object via Copy', action: () => {} },
-            { label: 'Edit Contents', action: () => {} },
-            { label: 'Export Contents...', action: () => {} },
-            { label: 'Replace Contents...', action: () => {} },
-            { label: 'Relink to File...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Reset Transform', action: () => {} },
-            { label: 'Convert to Layers', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { label: 'Rasterize', action: () => {} },
-        { label: 'Rasterize Layer Style', action: () => {} },
-        { type: 'separator' },
-        { label: 'Group Layers', shortcut: 'Ctrl+G', action: () => {} },
-        { 
-          label: 'Arrange', 
-          action: () => {},
-          submenu: [
-            { label: 'Bring to Front', shortcut: 'Ctrl+Shift+]', action: () => {} },
-            { label: 'Bring Forward', shortcut: 'Ctrl+]', action: () => {} },
-            { label: 'Send Backward', shortcut: 'Ctrl+[', action: () => {} },
-            { label: 'Send to Back', shortcut: 'Ctrl+Shift+[', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Combine Shapes', 
-          action: () => {},
-          submenu: [
-            { label: 'Unite', action: () => {} },
-            { label: 'Subtract', action: () => {} },
-            { label: 'Intersect', action: () => {} },
-            { label: 'Exclude', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { 
-          label: 'Animation', 
-          action: () => {},
-          submenu: [
-            { label: 'New Frame', action: () => {} },
-            { label: 'Copy Frame', action: () => {} },
-            { label: 'Delete Frame', action: () => {} },
-            { type: 'separator' },
-            { label: 'Enable Timeline', action: () => {} },
-            { label: 'Work Area Start', action: () => {} },
-            { label: 'Work Area End', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { label: 'Merge Down', shortcut: 'Ctrl+E', action: () => {} },
-        { label: 'Flatten Image', action: () => {} },
-        { type: 'separator' },
-        { label: 'Defringe', action: () => {} }
-      ]
-    },
-    {
-      id: 'select',
-      label: 'Select',
-      items: [
-        { label: 'All', shortcut: 'Ctrl+A', action: () => {} },
-        { label: 'Deselect', shortcut: 'Ctrl+D', action: () => {} },
-        { label: 'Inverse', shortcut: 'Shift+Ctrl+I', action: () => {} },
-        { type: 'separator' },
-        { label: 'Remove BG', action: () => {} },
-        { type: 'separator' },
-        { label: 'Color Range...', action: () => {} },
-        { label: 'Magic Cut...', action: () => {} },
-        { label: 'Subject', action: () => {} },
-        { type: 'separator' },
-        { label: 'Refine Edge...', action: () => {} },
-        { 
-          label: 'Modify', 
-          action: () => {},
-          submenu: [
-            { label: 'Border...', action: () => {} },
-            { label: 'Smooth...', action: () => {} },
-            { label: 'Expand...', action: () => {} },
-            { label: 'Contract...', action: () => {} },
-            { label: 'Feather...', shortcut: 'Shift+F6', action: () => {} },
-            { type: 'separator' },
-            { label: 'Grow', action: () => {} },
-            { label: 'Similar', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { label: 'Grow', action: () => {} },
-        { label: 'Similar', action: () => {} },
-        { type: 'separator' },
-        { label: 'Transform Selection', action: () => {} },
-        { type: 'separator' },
-        { label: 'Quick Mask Mode', shortcut: 'Q', action: () => {} },
-        { type: 'separator' },
-        { label: 'Load Selection', action: () => {} },
-        { label: 'Save Selection', action: () => {} }
+        }
       ]
     },
     {
       id: 'filter',
       label: 'Filter',
       items: [
-        { label: 'Last Filter', shortcut: 'Alt+Ctrl+F', action: () => {} },
-        { type: 'separator' },
-        { label: 'Filter Gallery...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Lens Correction...', action: () => {} },
-        { label: 'Camera Raw...', action: () => {} },
-        { type: 'separator' },
-        { label: 'Liquify...', action: () => {} },
-        { label: 'Vanishing Point...', action: () => {} },
-        { type: 'separator' },
-        { 
-          label: '3D', 
-          action: () => {},
-          submenu: [
-            { label: 'Generate Bump Map', action: () => {} },
-            { label: 'Generate Normal Map', action: () => {} },
-            { label: 'Generate Volume', action: () => {} }
-          ]
-        },
         { 
           label: 'Blur', 
-          action: () => {},
+          action: () => {}, 
           submenu: [
-            { label: 'Gaussian Blur...', action: () => {} },
-            { label: 'Lens Blur...', action: () => {} },
-            { label: 'Motion Blur...', action: () => {} },
-            { label: 'Radial Blur...', action: () => {} },
-            { label: 'Smart Blur...', action: () => {} },
-            { label: 'Surface Blur...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Box Blur...', action: () => {} },
-            { label: 'Shape Blur...', action: () => {} },
-            { label: 'Average', action: () => {} }
+            { 
+              label: 'Motion Blur...', 
+              action: () => withHistoryAndCanvas((canvas) => 
+                applyMotionBlur(canvas, { angle: 0, distance: 10 })
+              )
+            }
           ]
         },
         { 
-          label: 'Blur Gallery', 
-          action: () => {},
+          label: 'Artistic', 
+          action: () => {}, 
           submenu: [
-            { label: 'Field Blur...', action: () => {} },
-            { label: 'Iris Blur...', action: () => {} },
-            { label: 'Tilt-Shift...', action: () => {} },
-            { label: 'Path Blur...', action: () => {} },
-            { label: 'Spin Blur...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Distort', 
-          action: () => {},
-          submenu: [
-            { label: 'Displace...', action: () => {} },
-            { label: 'Pinch...', action: () => {} },
-            { label: 'Polar Coordinates...', action: () => {} },
-            { label: 'Ripple...', action: () => {} },
-            { label: 'Shear...', action: () => {} },
-            { label: 'Spherize...', action: () => {} },
-            { label: 'Twirl...', action: () => {} },
-            { label: 'Wave...', action: () => {} },
-            { label: 'ZigZag...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Lens Correction...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Noise', 
-          action: () => {},
-          submenu: [
-            { label: 'Add Noise...', action: () => {} },
-            { label: 'Despeckle', action: () => {} },
-            { label: 'Dust & Scratches...', action: () => {} },
-            { label: 'Median...', action: () => {} },
-            { label: 'Reduce Noise...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Pixelate', 
-          action: () => {},
-          submenu: [
-            { label: 'Color Halftone...', action: () => {} },
-            { label: 'Crystallize...', action: () => {} },
-            { label: 'Facet', action: () => {} },
-            { label: 'Fragment', action: () => {} },
-            { label: 'Mezzotint...', action: () => {} },
-            { label: 'Mosaic...', action: () => {} },
-            { label: 'Pointillize...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Render', 
-          action: () => {},
-          submenu: [
-            { label: 'Clouds', action: () => {} },
-            { label: 'Difference Clouds', action: () => {} },
-            { label: 'Fibers...', action: () => {} },
-            { label: 'Lens Flare...', action: () => {} },
-            { label: 'Lighting Effects...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Flame...', action: () => {} },
-            { label: 'Picture Frame...', action: () => {} },
-            { label: 'Tree...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Sharpen', 
-          action: () => {},
-          submenu: [
-            { label: 'Sharpen', action: () => {} },
-            { label: 'Sharpen Edges', action: () => {} },
-            { label: 'Sharpen More', action: () => {} },
-            { label: 'Smart Sharpen...', action: () => {} },
-            { label: 'Unsharp Mask...', action: () => {} }
+            { 
+              label: 'Oil Painting...', 
+              action: () => withHistoryAndCanvas((canvas) => applyOilPainting(canvas))
+            },
+            { 
+              label: 'Watercolor...', 
+              action: () => withHistoryAndCanvas((canvas) => applyWatercolor(canvas))
+            }
           ]
         },
         { 
           label: 'Stylize', 
-          action: () => {},
+          action: () => {}, 
           submenu: [
-            { label: 'Diffuse...', action: () => {} },
-            { label: 'Emboss...', action: () => {} },
-            { label: 'Extrude...', action: () => {} },
-            { label: 'Find Edges', action: () => {} },
-            { label: 'Glowing Edges...', action: () => {} },
-            { label: 'Solarize', action: () => {} },
-            { label: 'Tiles...', action: () => {} },
-            { label: 'Trace Contour...', action: () => {} },
-            { label: 'Wind...', action: () => {} },
-            { type: 'separator' },
-            { label: 'Oil Paint...', action: () => {} }
+            { 
+              label: 'Emboss...', 
+              action: () => withHistoryAndCanvas((canvas) => applyEmboss(canvas))
+            },
+            { 
+              label: 'Find Edges', 
+              action: () => withHistoryAndCanvas((canvas) => applyEdgeDetection(canvas))
+            }
           ]
         },
         { 
-          label: 'Other', 
-          action: () => {},
+          label: 'Distort', 
+          action: () => {}, 
           submenu: [
-            { label: 'Custom...', action: () => {} },
-            { label: 'High Pass...', action: () => {} },
-            { label: 'Maximum...', action: () => {} },
-            { label: 'Minimum...', action: () => {} },
-            { label: 'Offset...', action: () => {} }
-          ]
-        },
-        { 
-          label: 'Fourier', 
-          action: () => {},
-          submenu: [
-            { label: 'FFT', action: () => {} },
-            { label: 'IFFT', action: () => {} }
+            { 
+              label: 'Pinch...', 
+              action: () => withHistoryAndCanvas((canvas) => applyPinch(canvas))
+            },
+            { 
+              label: 'Spherize...', 
+              action: () => withHistoryAndCanvas((canvas) => applySpherize(canvas))
+            }
           ]
         }
       ]
@@ -655,129 +495,70 @@ export default function TopMenuBar() {
       id: 'view',
       label: 'View',
       items: [
-        { label: 'Zoom In', shortcut: 'Ctrl++', action: () => {} },
+        { label: 'Zoom In', shortcut: 'Ctrl+=', action: () => {} },
         { label: 'Zoom Out', shortcut: 'Ctrl+-', action: () => {} },
-        { label: 'Fit The Area', shortcut: 'Ctrl+0', action: () => {} },
-        { label: 'Pixel to Pixel', shortcut: 'Ctrl+1', action: () => {} },
-        { type: 'separator' },
-        { label: 'Pattern Preview', action: () => {} },
-        { type: 'separator' },
-        { 
-          label: 'Mode', 
-          action: () => {},
-          submenu: [
-            { label: 'Standard Screen Mode', action: () => {} },
-            { label: 'Full Screen Mode with Menus', shortcut: 'F', action: () => {} },
-            { label: 'Full Screen Mode', shortcut: 'Shift+F', action: () => {} },
-            { label: 'Maximized Screen Mode', action: () => {} }
-          ]
-        },
-        { label: 'Extras', shortcut: 'Ctrl+H', action: () => {}, checked: true },
-        { 
-          label: 'Show', 
-          action: () => {},
-          submenu: [
-            { label: 'Layer Edges', action: () => {} },
-            { label: 'Selection Edges', shortcut: 'Ctrl+H', action: () => {} },
-            { label: 'Target Path', action: () => {} },
-            { label: 'Grid', shortcut: 'Ctrl+\'', action: () => {} },
-            { label: 'Guides', shortcut: 'Ctrl+;', action: () => {} },
-            { label: 'Smart Guides', action: () => {} },
-            { label: 'Slices', action: () => {} },
-            { label: 'Notes', action: () => {} },
-            { label: 'Pixel Grid', action: () => {} },
-            { type: 'separator' },
-            { label: '3D Secondary View', action: () => {} },
-            { label: '3D Ground Plane', action: () => {} },
-            { label: '3D Lights', action: () => {} },
-            { label: '3D Selection', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { label: 'Rulers', shortcut: 'Ctrl+R', action: () => {} },
-        { type: 'separator' },
+        { label: 'Fit to Screen', shortcut: 'Ctrl+0', action: () => {} },
+        { label: 'Actual Size', shortcut: 'Ctrl+1', action: () => {} },
+        separator(),
+        { label: 'Rulers', shortcut: 'Ctrl+R', action: () => {}, checked: false },
+        { label: 'Grid', shortcut: 'Ctrl+;', action: () => {}, checked: false },
+        { label: 'Guides', action: () => {}, checked: true },
+        separator(),
         { label: 'Snap', action: () => {}, checked: true },
         { 
           label: 'Snap To', 
-          action: () => {},
+          action: () => {}, 
           submenu: [
             { label: 'Guides', action: () => {}, checked: true },
-            { label: 'Grid', action: () => {} },
-            { label: 'Layers', action: () => {} },
-            { label: 'Slices', action: () => {} },
-            { label: 'Document Bounds', action: () => {} },
-            { label: 'All', action: () => {} },
-            { label: 'None', action: () => {} }
+            { label: 'Grid', action: () => {}, checked: false },
+            { label: 'Layers', action: () => {}, checked: false }
           ]
-        },
-        { type: 'separator' },
-        { label: 'Lock Guides', action: () => {} },
-        { label: 'Clear Guides', action: () => {} },
-        { label: 'Add Guides...', action: () => {} },
-        { label: 'Guides from Layer', action: () => {} },
-        { type: 'separator' },
-        { label: 'Clear Slices', action: () => {} }
+        }
       ]
     },
     {
       id: 'window',
       label: 'Window',
       items: [
-        { 
-          label: 'More', 
-          action: () => {},
-          submenu: [
-            { label: 'Workspace', action: () => {} },
-            { label: 'Extensions', action: () => {} },
-            { label: 'Libraries', action: () => {} }
-          ]
-        },
-        { type: 'separator' },
-        { label: 'Plugins', action: () => {} },
-        { label: 'Actions', action: () => {} },
-        { label: 'Adjustments', action: () => {} },
-        { type: 'separator' },
+        { label: 'Minimize', action: () => {} },
+        { label: 'Zoom', action: () => {} },
+        separator(),
         { label: 'Brush', action: () => {}, checked: true },
         { label: 'Channels', action: () => {}, checked: true },
         { label: 'Character', action: () => {}, checked: true },
-        { label: 'Character Styles', action: () => {} },
-        { label: 'Color', action: () => {} },
-        { label: 'Glyphs', action: () => {} },
-        { label: 'Histogram', action: () => {} },
-        { label: 'History', action: () => {}, checked: true },
+        { label: 'Color', action: () => {}, checked: true },
         { label: 'Info', action: () => {}, checked: true },
         { label: 'Layers', action: () => {}, checked: true },
-        { label: 'Layer Comps', action: () => {} },
-        { label: 'Navigator', action: () => {} },
-        { label: 'Notes', action: () => {} },
+        { label: 'Navigator', action: () => {}, checked: true },
+        { label: 'History', action: () => {}, checked: true },
         { label: 'Paragraph', action: () => {}, checked: true },
         { label: 'Paths', action: () => {}, checked: true },
         { label: 'Properties', action: () => {}, checked: true },
-        { label: 'Style', action: () => {} },
+        { label: 'Styles', action: () => {}, checked: true },
         { label: 'Swatches', action: () => {}, checked: true },
-        { label: 'Tool Presets', action: () => {} },
-        { label: 'Vector Info', action: () => {} }
+        { label: 'Tool Presets', action: () => {}, checked: true },
+        { label: 'Tools', action: () => {}, checked: true }
       ]
     },
     {
       id: 'help',
       label: 'Help',
       items: [
-        { label: 'About', action: () => {} },
-        { label: 'Keyboard Shortcuts', action: () => {} },
-        { label: 'User Guide', action: () => {} },
+        { label: 'PhotoStar Help...', shortcut: 'F1', action: () => {} },
+        { label: 'Keyboard Shortcuts...', action: () => {} },
+        separator(),
+        { label: 'About PhotoStar...', action: () => {} }
       ]
     }
   ];
 
   return (
-    <div className="h-8 bg-gray-800 border-b border-gray-700 flex items-center justify-between text-xs">
-      {/* Left side - Main menu */}
-      <div className="flex items-center">
-        {menuItems.map((menu) => (
+    <div className="bg-gray-900 border-b border-gray-700 px-2 py-1">
+      <div className="flex items-center space-x-1">
+        {menuGroups.map((menu) => (
           <div key={menu.id} className="relative">
             <button
-              className="px-2 py-1 text-white hover:bg-gray-700 text-xs"
+              className="px-2 py-1 text-xs text-white hover:bg-gray-700 rounded"
               onClick={() => setOpenDropdown(openDropdown === menu.id ? null : menu.id)}
             >
               {menu.label}
@@ -785,28 +566,29 @@ export default function TopMenuBar() {
             {openDropdown === menu.id && (
               <div className="absolute top-full left-0 bg-gray-800 border border-gray-600 shadow-lg z-50 min-w-48">
                 {menu.items.map((item, index) => {
-                  if (item.type === 'separator') {
+                  if ('type' in item && item.type === 'separator') {
                     return <hr key={index} className="border-gray-600" />;
                   }
+                  const menuItem = item as MenuItem;
                   return (
                     <div key={index} className="relative group">
                       <button
                         className="block w-full px-3 py-1 text-xs text-left hover:bg-gray-700 flex items-center justify-between text-white"
-                        onClick={item.action}
+                        onClick={menuItem.action}
                       >
-                        <span>{item.label}</span>
+                        <span>{menuItem.label}</span>
                         <div className="flex items-center space-x-2">
-                          {item.shortcut && (
-                            <span className="text-gray-400 text-xs">{item.shortcut}</span>
+                          {menuItem.shortcut && (
+                            <span className="text-gray-400 text-xs">{menuItem.shortcut}</span>
                           )}
-                          {item.submenu && (
+                          {menuItem.submenu && (
                             <i className="fas fa-chevron-right text-xs text-gray-400"></i>
                           )}
                         </div>
                       </button>
-                      {item.submenu && (
+                      {menuItem.submenu && (
                         <div className="absolute left-full top-0 bg-gray-800 border border-gray-600 shadow-lg z-50 min-w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                          {item.submenu.map((subItem, subIndex) => (
+                          {menuItem.submenu.map((subItem, subIndex) => (
                             <button
                               key={subIndex}
                               className="block w-full px-3 py-1 text-xs text-left hover:bg-gray-700 text-white"
@@ -827,43 +609,6 @@ export default function TopMenuBar() {
             )}
           </div>
         ))}
-        
-        {/* More menu */}
-        <button className="px-2 py-1 text-white hover:bg-gray-700 text-xs">
-          More
-        </button>
-        
-        {/* Account button with red highlight */}
-        <button className="px-2 py-1 text-red-400 hover:bg-gray-700 text-xs font-medium">
-          Account
-        </button>
-      </div>
-
-      {/* Right side - User actions and icons */}
-      <div className="flex items-center space-x-3 px-3">
-        <span className="text-gray-400 text-xs hover:text-white cursor-pointer">About</span>
-        <span className="text-gray-400 text-xs hover:text-white cursor-pointer">Report a bug</span>
-        <span className="text-gray-400 text-xs hover:text-white cursor-pointer">Learn</span>
-        <span className="text-gray-400 text-xs hover:text-white cursor-pointer">Blog</span>
-        <span className="text-gray-400 text-xs hover:text-white cursor-pointer">API</span>
-        
-        {/* Search icon */}
-        <button className="text-gray-400 hover:text-white">
-          <i className="fas fa-search text-xs"></i>
-        </button>
-        
-        {/* Fullscreen icon */}
-        <button className="text-gray-400 hover:text-white">
-          <i className="fas fa-expand text-xs"></i>
-        </button>
-        
-        {/* Social icons */}
-        <button className="text-gray-400 hover:text-white">
-          <i className="fab fa-twitter text-xs"></i>
-        </button>
-        <button className="text-gray-400 hover:text-white">
-          <i className="fab fa-facebook text-xs"></i>
-        </button>
       </div>
     </div>
   );
